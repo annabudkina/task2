@@ -16,78 +16,86 @@
 #include <stdio.h>
 #include <malloc.h>
 #include "shared.h"
-#include <l4/dm_mem/dm_mem.h>
-//#include <l4/l4rm/l4rm.h>
-
-static void encrypt(L4::Cap<void> const &server)
+#include <l4/re/dataspace>      // L4Re::Dataspace
+#include <l4/re/rm>             // L4::Rm
+static int crypt(L4::Cap<void> const &server, char*text, unsigned long size,int opcode,char* ret)
    
 {
-
-  L4::Ipc::Iostream s(l4_utcb());
-  s << l4_umword_t(Opcode::encrypt);
-  int r = l4_error(s.call(server.cap(), Protocol::Encr));
-  if (r)
-    return NULL; // failure
-}
-
-static void decrypt(L4::Cap<void> const &server)
-{
-
-  L4::Ipc::Iostream s(l4_utcb());
-  s << l4_umword_t(Opcode::decrypt)
-  int r = l4_error(s.call(server.cap(), Protocol::Encr));
-  if (r)
-    return NULL; // failure
-}
-int send_dataspace(L4::Cap<void> const &server, l4dm_dataspace_t ds, unsigned long size)
-{
+	char* addr;
+	int err;
 	L4::Ipc::Iostream s(l4_utcb());
-	s << l4_umword_t(Opcode::dataspace) <<ds<<size;
-	int r = l4_error(s.call(server.cap(), Protocol::Encr));
-	if (r)
-    		return 1; // failure
-         return 0;
+	L4::Cap<L4Re::Dataspace> ds = L4Re::Util::cap_alloc.alloc<L4Re::Dataspace>();
+	if (!ds.is_valid())
+    	{
+		printf("Could not get capability slot!\n");
+		return 1;
+    	}
+
+
+	s << l4_umword_t(Opcode::dataspace);
+	s <<L4::Ipc::Small_buf(ds);
+	err = l4_error(s.call(server.cap(), Protocol::Encr));
+	if (err)
+		return 1; // failure
+	printf("got dataspace\n");
+	err = L4Re::Env::env()->rm()->attach(&addr, ds->size(),
+                                           L4Re::Rm::Search_addr, ds);
+  	if (err < 0)
+	{
+		printf("Error attaching data space: %s\n", l4sys_errtostr(err));
+		L4Re::Util::cap_alloc.free(ds, L4Re::This_task);
+		return 1;
+	}
+	memcpy(addr,text,size);
+	printf(" %s \n",addr);
+
+
+
+	L4::Ipc::Iostream s1(l4_utcb());
+
+
+
+	s1<< l4_umword_t(opcode);
+	err = l4_error(s1.call(server.cap(), Protocol::Encr));
+	if (err)
+		return 1; // failure
+	ret=(char*)malloc(size);
+	memcpy(ret,addr,size);
+	err = L4Re::Env::env()->rm()->detach(addr, 0);
+	if (err)
+	    printf("Failed to detach region\n");
+	L4Re::Util::cap_alloc.free(ds, L4Re::This_task);
+	return 0;
 }
+
 int main()
    {
-  	L4::Cap<void> server = L4Re::Env::env()->get_cap<void>("encr_server");
+	char text[]="Hello World";
+	unsigned long size = 12;
+	char* ret;
+	int err;
+	L4::Cap<void> server = L4Re::Env::env()->get_cap<void>("encr_server");
 	if (!server.is_valid())
 	{
-     		 printf("Could not get server capability!\n");
-     		 return 1;
+		printf("Could not get server capability!\n");
+		return 1;
     	}
-	char text[]="Hello World";
-	unsigned long size = 12;//len+/0
-
-	l4dm_dataspace_t ds;
-	void* addr;
-	l4dm_mem_open(L4DM_DEFAULT_DSM,size,0,0,"EncrText",&ds);
-	l4rm_attach(&ds,size,0,L4DM_RW,&addr);
-
-	send_dataspace(server,ds,size);  
-	memcpy(addr,text,size);
-	printf(" %s \n",(char*)addr);
-	
-	if (!encrypt(server))	
+	if (crypt(server,text,size,Opcode::encrypt,ret))	
 	{
       		printf("Error talking to server\n");
       		return 1;
     	}
-  	printf("Encrypted text: %s \n", (char*)addr);
+  	printf("Encrypted text: %s \n", ret);
+
 	
-	
-	send_dataspace(server,ds,size); 
-  	if (!decrypt(server))
+  	if (crypt(server,ret,size,Opcode::decrypt,ret))
   	{
          	printf("Error talking to server\n");
      		return 1;
         }
-	printf("Decrypted text: %s \n",  (char*)addr);
+	printf("Decrypted text: %s \n",  ret);
 
-	l4rm_detach(addr);
-	l4dm_close(&ds);
-	
 	
   return 0;
- 
+
 }
