@@ -30,14 +30,11 @@ static int crypt(L4::Cap<void> const &server, char*text, unsigned long size,int 
 		printf("Could not get capability slot!\n");
 		return 1;
     	}
-
-
 	s << l4_umword_t(Opcode::dataspace);
 	s <<L4::Ipc::Small_buf(ds);
 	err = l4_error(s.call(server.cap(), Protocol::Encr));
 	if (err)
 		return 1; // failure
-	printf("got dataspace\n");
 	err = L4Re::Env::env()->rm()->attach(&addr, ds->size(),
                                            L4Re::Rm::Search_addr, ds);
   	if (err < 0)
@@ -48,18 +45,12 @@ static int crypt(L4::Cap<void> const &server, char*text, unsigned long size,int 
 	}
 	memcpy(addr,text,size);
 	printf(" %s \n",addr);
-
-
-
 	L4::Ipc::Iostream s1(l4_utcb());
-
-
-
-	s1<< l4_umword_t(opcode);
+	s1<< l4_umword_t(opcode)<<size;
 	err = l4_error(s1.call(server.cap(), Protocol::Encr));
 	if (err)
 		return 1; // failure
-	ret=(char*)malloc(size);
+	
 	memcpy(ret,addr,size);
 	err = L4Re::Env::env()->rm()->detach(addr, 0);
 	if (err)
@@ -80,6 +71,7 @@ int main()
 		printf("Could not get server capability!\n");
 		return 1;
     	}
+	ret=(char*)malloc(size);
 	if (crypt(server,text,size,Opcode::encrypt,ret))	
 	{
       		printf("Error talking to server\n");
@@ -94,7 +86,7 @@ int main()
      		return 1;
         }
 	printf("Decrypted text: %s \n",  ret);
-
+	free(ret);
 	
   return 0;
 

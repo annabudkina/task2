@@ -39,7 +39,6 @@ Encryption_server::Encryption_server()
     	{
 		printf("Could not get capability slot!\n");
     	}
-	printf("got dataspace capability slot!\n");
 	int err = L4Re::Env::env()->mem_alloc()->alloc(1024, ds, 0);
 	if (err < 0)
 	{
@@ -59,12 +58,12 @@ int Encryption_server::dispatch(l4_umword_t obj, L4::Ipc::Iostream &ios)
 	unsigned long size;
 	int err;
 	L4::Opcode opcode;
-	printf(" %s \n",addr);
 	l4_msgtag_t t;
 	ios >> t;
 	if (t.label() != Protocol::Encr)
 		return -L4_EBADPROTO;
 	ios >> opcode;
+	ios >> size;
 	switch (opcode)
 	{
 	case Opcode::encrypt:	
@@ -72,7 +71,6 @@ int Encryption_server::dispatch(l4_umword_t obj, L4::Ipc::Iostream &ios)
 		{
 			addr[i]=addr[i]+1;
 		}
-		printf(" %s \n",addr);
 		return L4_EOK;
 	case Opcode::decrypt:
 		for(unsigned i=0;i!=size-1;i++)
@@ -80,7 +78,6 @@ int Encryption_server::dispatch(l4_umword_t obj, L4::Ipc::Iostream &ios)
 			addr[i]=addr[i]-1;
 		}
 		return L4_EOK;
-		printf(" %s \n",addr);
 	case Opcode::dataspace:
 		ios<<ds;
 		return L4_EOK;
